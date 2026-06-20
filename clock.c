@@ -165,11 +165,11 @@ static DWORD WINAPI FetchWeatherThread(LPVOID param)
         INTERNET_DEFAULT_HTTPS_PORT, 0);
     if (!hConnect) { WinHttpCloseHandle(hSession); return 0; }
 
+    /* Richiesta Open-Meteo: usa current_weather per ottenere la temperatura attuale */
     HINTERNET hRequest = WinHttpOpenRequest(
         hConnect,
         L"GET",
-        L"/v1/forecast?latitude=45.0703&longitude=7.6869"
-        L"&current=temperature_2m&forecast_days=1",
+        L"/v1/forecast?latitude=45.0703&longitude=7.6869&current_weather=true&timezone=auto",
         NULL,
         WINHTTP_NO_REFERER,
         WINHTTP_DEFAULT_ACCEPT_TYPES,
@@ -190,12 +190,23 @@ static DWORD WINAPI FetchWeatherThread(LPVOID param)
         total += read;
     buf[total] = '\0';
 
-    /* Parse: cerca "temperature_2m":<valore> */
-    char *p = strstr(buf, "\"temperature_2m\":");
+    /* Parse: preferisci "current_weather" -> "temperature": value
+       altrimenti fallback a "temperature_2m" se presente */
+    char *p = strstr(buf, "\"current_weather\"");
     if (p) {
-        p += strlen("\"temperature_2m\":");
-        g_temp = (float)atof(p);
-        if (g_hwnd) InvalidateRect(g_hwnd, NULL, FALSE);
+        char *q = strstr(p, "\"temperature\":");
+        if (q) {
+            q += strlen("\"temperature\":");
+            g_temp = (float)atof(q);
+            if (g_hwnd) InvalidateRect(g_hwnd, NULL, FALSE);
+        }
+    } else {
+        char *r = strstr(buf, "\"temperature_2m\":");
+        if (r) {
+            r += strlen("\"temperature_2m\":");
+            g_temp = (float)atof(r);
+            if (g_hwnd) InvalidateRect(g_hwnd, NULL, FALSE);
+        }
     }
 
 cleanup:
@@ -274,7 +285,6 @@ static void OnPaint(HWND hwnd)
     struct tm *tm = localtime(&t);
     int hh = tm->tm_hour;
     int mm = tm->tm_min;
-    int ss = tm->tm_sec;
 
     /* ── Cifre ORA ── */
     DrawDigit(mem, hh / 10, startX,           startY, digitW, digitH, T);
@@ -288,15 +298,6 @@ static void OnPaint(HWND hwnd)
     int mx = startX + 2*digitW + 2*gap + colonW + gap;
     DrawDigit(mem, mm / 10, mx,           startY, digitW, digitH, T);
     DrawDigit(mem, mm % 10, mx + digitW + gap, startY, digitW, digitH, T);
-
-    /* ── SECONDI (piccoli, in basso a destra dei minuti) ── */
-    int sH = (int)(digitH * 0.28);
-    int sW = (int)(sH * 0.6);
-    int sT = max(2, sH / 12);
-    int sx = mx + 2*digitW + 2*gap + gap/2;
-    int sy = startY + digitH - sH;
-    DrawDigit(mem, ss / 10, sx,      sy, sW, sH, sT);
-    DrawDigit(mem, ss % 10, sx + sW + sT, sy, sW, sH, sT);
 
     /* ── Testo superiore ── */
     int fontH = max(12, (int)(H * 0.038));
@@ -328,20 +329,8 @@ static void OnPaint(HWND hwnd)
     RECT tempRc = { fontH, (int)(H*0.10), W/3, (int)(H*0.20) };
     DrawTextW(mem, tempBuf, -1, &tempRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
-    /* ── Istruzioni in basso ── */
-    int hintH = max(9, (int)(H * 0.025));
-    HFONT hfontHint = CreateFont(hintH, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        ANTIALIASED_QUALITY, FIXED_PITCH | FF_MODERN, L"Courier New");
-    SelectObject(mem, hfontHint);
-    SetTextColor(mem, RGB(60,60,60));
-    RECT hintRc = { 0, H - hintH*2, W, H };
-    DrawTextW(mem, L"F11 Schermo intero  |  ESC Esci",
-              -1, &hintRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-
     SelectObject(mem, oldfont);
     DeleteObject(hfont);
-    DeleteObject(hfontHint);
 
     /* Blit */
     BitBlt(hdc, 0, 0, W, H, mem, 0, 0, SRCCOPY);
