@@ -1,51 +1,29 @@
 # ──────────────────────────────────────────────────────────
-#  Makefile per DigitalClock  (MinGW / MSYS2 su Windows)
+#  Makefile — DigitalClock
+#  Supporta: Windows (MinGW/MSYS2) e Linux cross-compile
 # ──────────────────────────────────────────────────────────
 
-CC      = gcc
-TARGET  = clock.exe
+FLAGS   = -mwindows -municode -O2
+LIBS    = -lwinhttp -lws2_32
 SRC     = clock.c
 
-# -mwindows   → no finestra console (solo GUI)
-# -lwinhttp   → WinHTTP per fetch meteo
-# -municode   → entry point wWinMain unicode
-FLAGS   = -O2 -Wall -mwindows -municode
-LIBS    = -lwinhttp -lws2_32
+# ── Windows (MSYS2 MinGW 64-bit) ──────────────────────────
+win64:
+	gcc $(FLAGS) $(SRC) -o clock64.exe $(LIBS)
 
-all:
-	$(CC) $(FLAGS) $(SRC) -o $(TARGET) $(LIBS)
+win32:
+	gcc $(FLAGS) $(SRC) -o clock32.exe $(LIBS)
 
-debug:
-	$(CC) -O0 -g $(SRC) -o $(TARGET) -lwinhttp -lws2_32 -municode
+# ── Linux cross-compile → Windows ─────────────────────────
+# sudo apt install mingw-w64
+linux64:
+	x86_64-w64-mingw32-gcc $(FLAGS) $(SRC) -o clock64.exe $(LIBS)
+
+linux32:
+	i686-w64-mingw32-gcc $(FLAGS) $(SRC) -o clock32.exe $(LIBS)
+
+# ── Entrambi da Linux ──────────────────────────────────────
+all: linux64 linux32
 
 clean:
-	del /Q $(TARGET) 2>NUL || rm -f $(TARGET)
-
-
-# ──────────────────────────────────────────────────────────
-#  ISTRUZIONI RAPIDE
-# ──────────────────────────────────────────────────────────
-#
-#  1) Installa MSYS2  →  https://www.msys2.org/
-#     Apri "MSYS2 MinGW 64-bit" dal menu Start
-#
-#  2) Installa il compilatore (una volta sola):
-#       pacman -S mingw-w64-x86_64-gcc
-#
-#  3) Compila:
-#       cd /c/percorso/cartella
-#       make
-#     oppure senza Make:
-#       gcc -O2 -mwindows -municode clock.c -o clock.exe -lwinhttp -lws2_32
-#
-#  4) Doppio clic su clock.exe — nessuna DLL aggiuntiva richiesta
-#
-#  TASTI:
-#    F11      → schermo intero / finestra
-#    ESC      → esci (o torna dalla modalità schermo intero)
-#
-#  METEO:
-#    Richiede connessione Internet per la prima lettura.
-#    Aggiornamento automatico ogni 10 minuti via Open-Meteo
-#    (API pubblica gratuita, niente chiave necessaria).
-#    Coordinate fisse: Torino  lat=45.07  lon=7.69
+	rm -f clock64.exe clock32.exe
