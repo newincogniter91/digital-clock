@@ -1,7 +1,7 @@
 # DigitalClock
 
-A minimalist fullscreen digital clock for Windows, built with pure Win32 API and GDI.  
-No browser, no Electron, no dependencies — just a single `.exe`.
+Orologio digitale stile sveglia anni '80 per Windows — sfondo nero assoluto, cifre 7-segmenti bianche, meteo live.  
+Applicazione nativa Win32, zero dipendenze esterne, zero browser, zero installer.
 
 ![Platform](https://img.shields.io/badge/platform-Windows-blue)
 ![Language](https://img.shields.io/badge/language-C-lightgrey)
@@ -9,97 +9,83 @@ No browser, no Electron, no dependencies — just a single `.exe`.
 
 ---
 
-## What it does
+## Funzionalità
 
-- Displays current **time** (HH:MM) in large 7-segment style digits — like an old digital alarm clock
-- **Seconds** shown small, bottom-right of the minutes
-- **Date** in DD/MM/YY format, centered at the top
-- **Day of the week** in Italian (LUNEDÌ, MARTEDÌ, ...), top-right
-- **Live temperature** for Turin, Italy — top-left, fetched from [Open-Meteo](https://open-meteo.com/) (free API, no key required), updated every 10 minutes
-- **Pure black background** (RGB 0,0,0) — looks great on OLED/AMOLED displays
-- **Prevents standby** — screen and system stay awake while the app is running
-- **Fullscreen support** — press F11 to toggle, ESC to exit
-
----
-
-## Screenshots
-
-> Classic 7-segment look, white digits on absolute black background.
+| Elemento | Dettaglio |
+|---|---|
+| **Ora : Minuti** | Cifre 7-segmenti grandi, due punti lampeggianti ogni secondo |
+| **Secondi** | Piccoli, in basso a destra dei minuti |
+| **Data** | GG/MM/AA in alto al centro |
+| **Giorno** | In italiano (LUNEDÌ, MARTEDÌ…) in alto a destra |
+| **Meteo** | Icona + temperatura di Torino, aggiornata ogni 10 min via Open-Meteo |
+| **Sveglia** | Imposta ora/minuti, suona con beep per 30 secondi |
+| **12h / 24h** | Toggle formato orario |
+| **Fullscreen** | F11 o doppio click |
+| **Standby** | Impedisce lo standby del PC mentre è aperta |
+| **Icona** | Generata in memoria, nessun file .ico esterno |
 
 ---
 
-## Requirements
+## Tasti
 
-- Windows 7 or later (x64)
-- [MSYS2](https://www.msys2.org/) with MinGW64 toolchain (to compile)
-- Internet connection (for temperature fetch)
+| Tasto | Azione |
+|---|---|
+| `H` | Mostra popup comandi |
+| `T` | Toggle 12h / 24h |
+| `A` | Imposta sveglia |
+| `F11` | Schermo intero / finestra |
+| Doppio click | Schermo intero / finestra |
+| `ESC` | Ferma sveglia → esci da fullscreen → esci |
 
 ---
 
-## How to compile
+## Compilazione
 
-### 1. Install MSYS2
+### Su Windows (MSYS2)
 
-Download and install from [msys2.org](https://www.msys2.org/).  
-Open **"MSYS2 MinGW 64-bit"** from the Start menu.
-
-### 2. Install GCC (first time only)
+Installa MSYS2 da [msys2.org](https://www.msys2.org/), apri **MSYS2 MinGW 64-bit** e:
 
 ```bash
+# Prima volta — installa GCC
 pacman -S mingw-w64-x86_64-gcc
+
+# Compila
+make win64
+
+# Oppure senza Make
+gcc -mwindows -municode clock.c -o clock64.exe -lwinhttp -lws2_32
 ```
 
-### 3. Clone the repo and compile
+### Su Linux (cross-compile per Windows)
 
 ```bash
-cd /c/Users/YourName/Desktop
-git clone https://github.com/youruser/DigitalClock
-cd DigitalClock
-gcc -mwindows -municode clock.c -o clock.exe -lwinhttp -lws2_32
+# Prima volta — installa MinGW
+sudo apt install mingw-w64
+
+# 64-bit
+make linux64
+
+# 32-bit
+make linux32
+
+# Entrambi
+make all
 ```
 
-That's it. No Makefile needed, no CMake, no Visual Studio.
-
 ---
 
-## Usage
+## Personalizzare la città
 
-Just double-click `clock.exe` — no installer, no DLLs required.
-
-| Key | Action |
-|-----|--------|
-| `F11` | Toggle fullscreen |
-| `ESC` | Exit (or leave fullscreen) |
-
----
-
-## How it works
-
-| Feature | Implementation |
-|---------|---------------|
-| Window + rendering | Win32 API + GDI (pure C) |
-| 7-segment digits | Drawn as polygons via `Polygon()` |
-| Double buffering | Off-screen HDC to avoid flicker |
-| Temperature fetch | `WinHTTP` → Open-Meteo REST API (HTTPS) |
-| Standby prevention | `SetThreadExecutionState()` |
-| Unicode / Italian | `wchar_t`, `DrawTextW()` |
-
----
-
-## Customization
-
-To use a different city, change the coordinates in `FetchWeatherThread()`:
+Modifica le coordinate in `FetchWeatherThread()`:
 
 ```c
-L"/v1/forecast?latitude=45.0703&longitude=7.6869"
-//                         ^^^              ^^^^
-//                      your lat         your lon
+L"/v1/forecast?latitude=45.0703&longitude=7.6869&current_weather=true&timezone=auto"
 ```
 
-Find your coordinates on [open-meteo.com](https://open-meteo.com/).
+Trova le coordinate su [open-meteo.com](https://open-meteo.com/).
 
 ---
 
-## License
+## Licenza
 
-MIT — do whatever you want with it.
+MIT
