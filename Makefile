@@ -1,29 +1,30 @@
 # ──────────────────────────────────────────────────────────
-#  Makefile — DigitalClock
-#  Supporta: Windows (MinGW/MSYS2) e Linux cross-compile
+#  Makefile — DigitalClock (SDL2, multi-OS)
 # ──────────────────────────────────────────────────────────
 
-FLAGS   = -mwindows -municode -O2
-LIBS    = -lwinhttp -lws2_32
-SRC     = clock.c
+SRC = clock.c
 
-# ── Windows (MSYS2 MinGW 64-bit) ──────────────────────────
-win64:
-	gcc $(FLAGS) $(SRC) -o clock64.exe $(LIBS)
+SDL2_CFLAGS := $(shell sdl2-config --cflags 2>/dev/null)
+SDL2_LIBS   := $(shell sdl2-config --libs 2>/dev/null)
 
-win32:
-	gcc $(FLAGS) $(SRC) -o clock32.exe $(LIBS)
-
-# ── Linux cross-compile → Windows ─────────────────────────
-# sudo apt install mingw-w64
+# ── Linux nativo ───────────────────────────────────────────
+# Richiede: gcc, libsdl2-dev, libcurl-dev (vedi setup.sh)
 linux64:
-	x86_64-w64-mingw32-gcc $(FLAGS) $(SRC) -o clock64.exe $(LIBS)
+	gcc -O2 -o clock_linux64 $(SRC) $(SDL2_CFLAGS) $(SDL2_LIBS) -lcurl -lm
 
 linux32:
-	i686-w64-mingw32-gcc $(FLAGS) $(SRC) -o clock32.exe $(LIBS)
+	gcc -O2 -m32 -o clock_linux32 $(SRC) $(SDL2_CFLAGS) $(SDL2_LIBS) -lcurl -lm
 
-# ── Entrambi da Linux ──────────────────────────────────────
-all: linux64 linux32
+# ── Windows — da eseguire DENTRO una shell MSYS2 ───────────
+# (MinGW64 shell per windows64, MinGW32 shell per windows32)
+# Richiede: pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-SDL2 mingw-w64-x86_64-curl
+windows64:
+	gcc -O2 -mwindows -o clock64.exe $(SRC) $(SDL2_CFLAGS) $(SDL2_LIBS) -lcurl -lws2_32 -lm
+
+windows32:
+	gcc -O2 -mwindows -o clock32.exe $(SRC) $(SDL2_CFLAGS) $(SDL2_LIBS) -lcurl -lws2_32 -lm
+
+all: linux64
 
 clean:
-	rm -f clock64.exe clock32.exe
+	rm -f clock_linux64 clock_linux32 clock64.exe clock32.exe
