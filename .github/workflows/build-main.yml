@@ -17,7 +17,7 @@ jobs:
       - name: Installa dipendenze x86 64-bit
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libsdl2-dev libcurl4-openssl-dev
+          sudo apt-get install -y build-essential pkg-config libsdl2-dev libcurl4-openssl-dev
 
       - name: Compila 64-bit
         run: make linux64
@@ -29,7 +29,7 @@ jobs:
           # Stesso bug della OR-dependency glib: risolvo installando
           # prima libglib2.0-dev-bin esplicitamente (vedi commento
           # nel job linux-arm per il dettaglio).
-          sudo apt-get install -y --no-install-recommends libglib2.0-dev-bin:i386
+          sudo apt-get install -y --no-install-recommends pkg-config libglib2.0-dev-bin:i386
           sudo apt-get install -y --no-install-recommends \
             gcc-multilib libsdl2-dev:i386 libcurl4-openssl-dev:i386
 
@@ -79,7 +79,7 @@ jobs:
           # (-bin-linux, che non ha candidato). Installando prima
           # libglib2.0-dev-bin esplicitamente, la OR-dependency risulta
           # già soddisfatta quando arriva a libsdl2-dev.
-          sudo apt-get install -y --no-install-recommends libglib2.0-dev-bin:arm64
+          sudo apt-get install -y --no-install-recommends pkg-config libglib2.0-dev-bin:arm64
           sudo apt-get install -y --no-install-recommends \
             gcc-aarch64-linux-gnu libsdl2-dev:arm64 libcurl4-openssl-dev:arm64
 
@@ -88,7 +88,7 @@ jobs:
 
       - name: Installa cross-compiler e librerie ARM32 (armhf)
         run: |
-          sudo apt-get install -y --no-install-recommends libglib2.0-dev-bin:armhf
+          sudo apt-get install -y --no-install-recommends pkg-config libglib2.0-dev-bin:armhf
           sudo apt-get install -y --no-install-recommends \
             gcc-arm-linux-gnueabihf libsdl2-dev:armhf libcurl4-openssl-dev:armhf
 
