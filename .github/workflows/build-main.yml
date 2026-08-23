@@ -20,20 +20,32 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             build-essential pkg-config libsdl2-dev libcurl4-openssl-dev
 
-      - name: Compila x86_64
-        run: make linux64
-
-      - name: Compila x86_32 in container nativo 32-bit
+      - name: Compila x86_64 e x86_32 in parallelo (container per i386)
         run: |
+          set -e
+          mkdir -p build-logs
+          echo "Start linux64 build"
+          (make linux64 > build-logs/linux64.log 2>&1) &
+          pid64=$!
+
+          echo "Start linux32 build in 32-bit container"
           docker run --rm --platform linux/386 \
             -v "$PWD:/src" -w /src \
-            i386/ubuntu:24.04 bash -lc '
-              apt-get update && \
-              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-                build-essential pkg-config libsdl2-dev libcurl4-openssl-dev && \
-              make linux32
-            '
+            ubuntu:24.04 bash -lc "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libsdl2-dev libcurl4-openssl-dev && make linux32" > build-logs/linux32.log 2>&1 &
+          pid32=$!
 
+          wait $pid64; rc64=$?
+          wait $pid32; rc32=$?
+          echo "linux64 rc=$rc64"; echo "linux32 rc=$rc32"
+
+          # Show logs for debugging if something failed
+          if [ $rc64 -ne 0 ]; then echo "--- linux64 log ---"; cat build-logs/linux64.log; fi
+          if [ $rc32 -ne 0 ]; then echo "--- linux32 log ---"; cat build-logs/linux32.log; fi
+
+          # Exit non-zero only if both builds failed
+          if [ $rc64 -ne 0 ] && [ $rc32 -ne 0 ]; then
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: linux-x86
@@ -50,27 +62,33 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Compila ARM64 in container nativo
+      - name: Compila ARM64 e ARM32 in parallelo (container nativi)
         run: |
+          set -e
+          mkdir -p build-logs
+
+          echo "Start linux-arm64 build in container"
           docker run --rm --platform linux/arm64 \
             -v "$PWD:/src" -w /src \
-            arm64v8/ubuntu:24.04 bash -lc '
-              apt-get update && \
-              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-                build-essential pkg-config libsdl2-dev libcurl4-openssl-dev && \
-              make linux-arm64
-            '
+            arm64v8/ubuntu:24.04 bash -lc "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libsdl2-dev libcurl4-openssl-dev && make linux-arm64" > build-logs/arm64.log 2>&1 &
+          pid_arm64=$!
 
-      - name: Compila ARM32 in container nativo
-        run: |
+          echo "Start linux-arm32 build in container"
           docker run --rm --platform linux/arm/v7 \
             -v "$PWD:/src" -w /src \
-            arm32v7/ubuntu:24.04 bash -lc '
-              apt-get update && \
-              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-                build-essential pkg-config libsdl2-dev libcurl4-openssl-dev && \
-              make linux-arm32
-            '
+            arm32v7/ubuntu:24.04 bash -lc "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libsdl2-dev libcurl4-openssl-dev && make linux-arm32" > build-logs/arm32.log 2>&1 &
+          pid_arm32=$!
+
+          wait $pid_arm64; rc_arm64=$?
+          wait $pid_arm32; rc_arm32=$?
+          echo "arm64 rc=$rc_arm64"; echo "arm32 rc=$rc_arm32"
+
+          if [ $rc_arm64 -ne 0 ]; then echo "--- arm64 log ---"; cat build-logs/arm64.log; fi
+          if [ $rc_arm32 -ne 0 ]; then echo "--- arm32 log ---"; cat build-logs/arm32.log; fi
+
+          if [ $rc_arm64 -ne 0 ] && [ $rc_arm32 -ne 0 ]; then
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
