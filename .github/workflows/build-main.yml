@@ -1,0 +1,118 @@
+name: Build DigitalClock (main — multi-OS)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # ── Linux x86 (64-bit + 32-bit) ────────────────────────────
+  linux-x86:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installa dipendenze x86 64-bit
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libsdl2-dev libcurl4-openssl-dev
+
+      - name: Compila 64-bit
+        run: make linux64
+
+      - name: Installa dipendenze x86 32-bit (multilib)
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib libsdl2-dev:i386 libcurl4-openssl-dev:i386
+
+      - name: Compila 32-bit
+        run: make linux32
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86
+          path: |
+            clock_linux64
+            clock_linux32
+
+  # ── Linux ARM (64-bit + 32-bit, cross-compile da x86) ──────
+  linux-arm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Abilita architetture ARM (ports.ubuntu.com)
+        run: |
+          sudo tee /etc/apt/sources.list.d/ubuntu-ports.sources > /dev/null << 'SRC'
+          Types: deb
+          URIs: http://ports.ubuntu.com/ubuntu-ports
+          Suites: noble noble-updates noble-security
+          Components: main universe
+          Architectures: arm64 armhf
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          SRC
+          sudo dpkg --add-architecture arm64
+          sudo dpkg --add-architecture armhf
+          sudo apt-get update
+
+      - name: Installa cross-compiler e librerie ARM64
+        run: |
+          sudo apt-get install -y gcc-aarch64-linux-gnu libsdl2-dev:arm64 libcurl4-openssl-dev:arm64
+
+      - name: Compila ARM64
+        run: make cross-arm64
+
+      - name: Installa cross-compiler e librerie ARM32 (armhf)
+        run: |
+          sudo apt-get install -y gcc-arm-linux-gnueabihf libsdl2-dev:armhf libcurl4-openssl-dev:armhf
+
+      - name: Compila ARM32
+        run: make cross-armhf
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm
+          path: |
+            clock_linux_arm64
+            clock_linux_arm32
+
+  # ── Windows (64-bit + 32-bit, via MSYS2) ───────────────────
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - msystem: MINGW64
+            prefix: mingw-w64-x86_64
+            output: clock64.exe
+            target: windows64
+          - msystem: MINGW32
+            prefix: mingw-w64-i686
+            output: clock32.exe
+            target: windows32
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            make
+            ${{ matrix.prefix }}-gcc
+            ${{ matrix.prefix }}-SDL2
+            ${{ matrix.prefix }}-curl
+
+      - name: Compila ${{ matrix.output }}
+        run: make ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.msystem }}
+          path: ${{ matrix.output }}
