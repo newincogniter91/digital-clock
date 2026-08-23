@@ -20,6 +20,9 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             build-essential pkg-config libsdl2-dev libcurl4-openssl-dev
 
+      - name: Set up QEMU (for i386 container emulation)
+        uses: docker/setup-qemu-action@v3
+
       - name: Compila x86_64 e x86_32 in parallelo (container per i386)
         run: |
           set -e
@@ -31,7 +34,7 @@ jobs:
           echo "Start linux32 build in 32-bit container"
           docker run --rm --platform linux/386 \
             -v "$PWD:/src" -w /src \
-            ubuntu:24.04 bash -lc "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libsdl2-dev libcurl4-openssl-dev && make linux32" > build-logs/linux32.log 2>&1 &
+            i386/debian:bookworm bash -lc "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libsdl2-dev libcurl4-openssl-dev && make linux32" > build-logs/linux32.log 2>&1 &
           pid32=$!
 
           wait $pid64; rc64=$?
