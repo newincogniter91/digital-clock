@@ -26,11 +26,12 @@ jobs:
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
-          # libglib2.0-dev-bin:i386 è il pacchetto che genera il problema
-          # su Ubuntu 24.04 (dipendenza OR che porta a python3-packaging:i386
-          # non installabile). Non è necessario per la build del progetto:
-          # installiamo solo il minimo richiesto dal compilatore e da SDL2/curl.
-          sudo apt-get install -y --no-install-recommends pkg-config \
+          # Il problema reale è la dipendenza OR di GLib:
+          # libglib2.0-dev-bin | libglib2.0-dev-bin-linux.
+          # Su Ubuntu 24.04 l'alternativa "-bin" rompe il multiarch, mentre
+          # l'alternativa "-bin-linux" risolve il problema in modo affidabile.
+          sudo apt-get install -y --no-install-recommends \
+            libglib2.0-dev-bin-linux:i386 \
             gcc-multilib libsdl2-dev:i386 libcurl4-openssl-dev:i386
 
       - name: Compila 32-bit
@@ -73,11 +74,12 @@ jobs:
 
       - name: Installa cross-compiler e librerie ARM64
         run: |
-          # Evitiamo libglib2.0-dev-bin:arm64: è la causa esatta del "held broken packages"
-          # su Ubuntu 24.04, perché la sua dipendenza OR richiede python3-packaging:arm64
-          # che non è disponibile nel repo attivo. Per il cross-build ci servono solo
-          # il compilatore ARM64 e le librerie SDL2/curl target.
-          sudo apt-get install -y --no-install-recommends pkg-config \
+          # Usa l'alternativa corretta della dipendenza GLib per le architetture
+          # ARM: libglib2.0-dev-bin-linux:arm64. L'alternativa "-bin" genera
+          # il 'held broken packages' su Ubuntu 24.04. Questo permette di
+          # completare il cross-build senza toccare la matrice richiesta.
+          sudo apt-get install -y --no-install-recommends \
+            libglib2.0-dev-bin-linux:arm64 \
             gcc-aarch64-linux-gnu libsdl2-dev:arm64 libcurl4-openssl-dev:arm64
 
       - name: Compila ARM64
@@ -85,10 +87,8 @@ jobs:
 
       - name: Installa cross-compiler e librerie ARM32 (armhf)
         run: |
-          # Come per ARM64: evitiamo libglib2.0-dev-bin:armhf, che chiama
-          # un pacchetto Python multiarch non risolvibile. Serve solo il toolchain
-          # ARM32 e le librerie target di SDL2/curl.
-          sudo apt-get install -y --no-install-recommends pkg-config \
+          sudo apt-get install -y --no-install-recommends \
+            libglib2.0-dev-bin-linux:armhf \
             gcc-arm-linux-gnueabihf libsdl2-dev:armhf libcurl4-openssl-dev:armhf
 
       - name: Compila ARM32
