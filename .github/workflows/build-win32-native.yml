@@ -1,0 +1,42 @@
+name: Build DigitalClock (win32-native)
+
+on:
+  push:
+    branches: [win32-native]
+  pull_request:
+    branches: [win32-native]
+  workflow_dispatch:
+
+jobs:
+  # ── Windows Win32 puro (nessuna dipendenza SDL2/curl) ──────
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - msystem: MINGW64
+            prefix: mingw-w64-x86_64
+            output: clock64.exe
+          - msystem: MINGW32
+            prefix: mingw-w64-i686
+            output: clock32.exe
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            ${{ matrix.prefix }}-gcc
+
+      - name: Compila ${{ matrix.output }}
+        run: gcc -O2 -mwindows -municode clock.c -o ${{ matrix.output }} -lwinhttp -lws2_32
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win32-native-${{ matrix.msystem }}
+          path: ${{ matrix.output }}
