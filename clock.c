@@ -182,7 +182,7 @@ static void DrawChar(SDL_Renderer *r, char c, int x, int y, int scale, SDL_Color
 
 static int TextWidth(const char *s, int scale) { return (int)strlen(s) * 6 * scale; }
 
-static void DrawText(SDL_Renderer *r, const char *s, int x, int y, int scale, SDL_Color col)
+static void DrawBitmapText(SDL_Renderer *r, const char *s, int x, int y, int scale, SDL_Color col)
 {
     int cx = x;
     for (const char *p = s; *p; p++) {
@@ -355,7 +355,7 @@ static void DrawHelpOverlay(SDL_Renderer *r, int W, int H)
     SDL_SetRenderDrawColor(r, 80,80,80,255);
     SDL_RenderDrawRect(r, &box);
 
-    DrawText(r, "COMANDI", bx+16, by+14, 3, COL_ON);
+    DrawBitmapText(r, "COMANDI", bx+16, by+14, 3, COL_ON);
 
     struct { const char *k; const char *d; } rows[] = {
         {"F11",      "SCHERMO INTERO"},
@@ -368,10 +368,10 @@ static void DrawHelpOverlay(SDL_Renderer *r, int W, int H)
     int n = (int)(sizeof(rows)/sizeof(rows[0]));
     for (int i = 0; i < n; i++) {
         int y = by + 52 + i*26;
-        DrawText(r, rows[i].k, bx+16,  y, 2, COL_ON);
-        DrawText(r, rows[i].d, bx+150, y, 2, COL_TEXT);
+        DrawBitmapText(r, rows[i].k, bx+16,  y, 2, COL_ON);
+        DrawBitmapText(r, rows[i].d, bx+150, y, 2, COL_TEXT);
     }
-    DrawText(r, "H O ESC PER CHIUDERE", bx+16, by+bh-24, 2, COL_DIM);
+    DrawBitmapText(r, "H O ESC PER CHIUDERE", bx+16, by+bh-24, 2, COL_DIM);
 }
 
 /* ─────────────────────────────────────────────────────────
@@ -389,7 +389,7 @@ static void DrawAlarmOverlay(SDL_Renderer *r, int W, int H)
     SDL_SetRenderDrawColor(r, 80,80,80,255);
     SDL_RenderDrawRect(r, &box);
 
-    DrawText(r, "IMPOSTA SVEGLIA", bx+16, by+14, 3, COL_ON);
+    DrawBitmapText(r, "IMPOSTA SVEGLIA", bx+16, by+14, 3, COL_ON);
 
     char hbuf[3], mbuf[3];
     snprintf(hbuf, 3, "%02d", app.edit_hour);
@@ -400,16 +400,16 @@ static void DrawAlarmOverlay(SDL_Renderer *r, int W, int H)
     int bs = 5;
     int tx = bx + 60;
     int ty = by + 55;
-    DrawText(r, hbuf, tx,               ty, bs, hcol);
-    DrawText(r, ":",  tx + 2*6*bs,      ty, bs, COL_TEXT);
-    DrawText(r, mbuf, tx + 3*6*bs,      ty, bs, mcol);
+    DrawBitmapText(r, hbuf, tx,               ty, bs, hcol);
+    DrawBitmapText(r, ":",  tx + 2*6*bs,      ty, bs, COL_TEXT);
+    DrawBitmapText(r, mbuf, tx + 3*6*bs,      ty, bs, mcol);
 
-    DrawText(r, app.edit_enabled ? "SVEGLIA: ATTIVA" : "SVEGLIA: SPENTA",
+    DrawBitmapText(r, app.edit_enabled ? "SVEGLIA: ATTIVA" : "SVEGLIA: SPENTA",
               bx+16, by+120, 2, app.edit_enabled ? COL_ON : COL_DIM);
 
-    DrawText(r, "TAB CAMBIA CAMPO", bx+16, by+152, 2, COL_DIM);
-    DrawText(r, "SU/GIU REGOLA  SPAZIO ON/OFF", bx+16, by+172, 2, COL_DIM);
-    DrawText(r, "INVIO CONFERMA  ESC ANNULLA", bx+16, by+192, 2, COL_DIM);
+    DrawBitmapText(r, "TAB CAMBIA CAMPO", bx+16, by+152, 2, COL_DIM);
+    DrawBitmapText(r, "SU/GIU REGOLA  SPAZIO ON/OFF", bx+16, by+172, 2, COL_DIM);
+    DrawBitmapText(r, "INVIO CONFERMA  ESC ANNULLA", bx+16, by+192, 2, COL_DIM);
 }
 
 /* ─────────────────────────────────────────────────────────
@@ -482,18 +482,18 @@ static void RenderClock(void)
     DrawDigit(app.ren, ss%10, sx+sW+sT,  sy, sW, sH, sT);
 
     if (!app.format24)
-        DrawText(app.ren, isPM ? "PM" : "AM", sx, sy - (int)(H*0.035), 2, COL_TEXT);
+        DrawBitmapText(app.ren, isPM ? "PM" : "AM", sx, sy - (int)(H*0.035), 2, COL_TEXT);
 
     int fs = (int)(H * 0.022); if (fs < 2) fs = 2;
 
     char dateBuf[20];
     snprintf(dateBuf, 20, "%02d/%02d/%02d", tmv->tm_mday, tmv->tm_mon+1, tmv->tm_year % 100);
     int dw = TextWidth(dateBuf, fs);
-    DrawText(app.ren, dateBuf, (W-dw)/2, (int)(H*0.08), fs, COL_TEXT);
+    DrawBitmapText(app.ren, dateBuf, (W-dw)/2, (int)(H*0.08), fs, COL_TEXT);
 
     const char *giorno = GIORNI[tmv->tm_wday];
     int gw = TextWidth(giorno, fs);
-    DrawText(app.ren, giorno, W - gw - 20, (int)(H*0.08), fs, COL_TEXT);
+    DrawBitmapText(app.ren, giorno, W - gw - 20, (int)(H*0.08), fs, COL_TEXT);
 
     SDL_LockMutex(g_weatherMutex);
     float temp = app.temp; int wcode = app.wcode;
@@ -504,18 +504,18 @@ static void RenderClock(void)
         snprintf(tempBuf, 24, "%s %d^C", WeatherLabel(wcode), (int)lroundf(temp));
     else
         snprintf(tempBuf, 24, "-- ^C");
-    DrawText(app.ren, tempBuf, 20, (int)(H*0.08), fs, COL_TEXT);
+    DrawBitmapText(app.ren, tempBuf, 20, (int)(H*0.08), fs, COL_TEXT);
 
     char alarmBuf[24];
     if (app.alarm_set)
         snprintf(alarmBuf, 24, "SVEGLIA %02d:%02d", app.alarm_hour, app.alarm_min);
     else
         snprintf(alarmBuf, 24, "SVEGLIA --:--");
-    DrawText(app.ren, alarmBuf, 20, H - (int)(H*0.08), fs, app.alarm_set ? COL_ON : COL_DIM);
+    DrawBitmapText(app.ren, alarmBuf, 20, H - (int)(H*0.08), fs, app.alarm_set ? COL_ON : COL_DIM);
 
     const char *modeStr = app.format24 ? "24H" : "12H";
     int mw = TextWidth(modeStr, fs);
-    DrawText(app.ren, modeStr, W - mw - 20, H - (int)(H*0.08), fs, COL_DIM);
+    DrawBitmapText(app.ren, modeStr, W - mw - 20, H - (int)(H*0.08), fs, COL_DIM);
 
     if (app.show_help)       DrawHelpOverlay(app.ren, W, H);
     if (app.show_alarm_edit) DrawAlarmOverlay(app.ren, W, H);

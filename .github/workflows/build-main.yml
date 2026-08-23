@@ -24,15 +24,14 @@ jobs:
 
       - name: Installa dipendenze x86 32-bit (multilib)
         run: |
-          # I runner GitHub hanno repo di terze parti (Azure, MS, ecc.)
-          # senza pacchetti i386: vanno rimossi prima di abilitare
-          # l'architettura, altrimenti apt-get update fallisce/rompe
-          # la risoluzione delle dipendenze su quei repo.
-          sudo rm -f /etc/apt/sources.list.d/*.list
-          sudo find /etc/apt/sources.list.d/ -name "*.sources" ! -name "ubuntu.sources" -delete
           sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y gcc-multilib libsdl2-dev:i386 libcurl4-openssl-dev:i386
+          # --no-install-recommends evita di trascinare libpulse-dev:i386
+          # -> libglib2.0-dev:i386, che nei repo Ubuntu ha spesso versioni
+          # del binario -bin disallineate e rompe la risoluzione dipendenze.
+          # Non serve comunque a compilare: SDL2 usa ALSA come fallback.
+          sudo apt-get install -y --no-install-recommends \
+            gcc-multilib libsdl2-dev:i386 libcurl4-openssl-dev:i386
 
       - name: Compila 32-bit
         run: make linux32
@@ -52,10 +51,14 @@ jobs:
 
       - name: Abilita architetture ARM (ports.ubuntu.com)
         run: |
-          # Stesso problema del job x86: ripulisco i repo di terze
-          # parti prima di abilitare architetture foreign.
+          # Il file ubuntu.sources di sistema (security.ubuntu.com,
+          # archive.ubuntu.com) non ha pacchetti arm64/armhf: senza
+          # vincolarlo esplicitamente ad amd64, apt prova comunque a
+          # cercarli lì e fallisce con 404. Lo confino ad amd64.
+          sudo sed -i '/^Types:/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
           sudo rm -f /etc/apt/sources.list.d/*.list
-          sudo find /etc/apt/sources.list.d/ -name "*.sources" ! -name "ubuntu.sources" -delete
+          sudo find /etc/apt/sources.list.d/ -name "*.sources" \
+            ! -name "ubuntu.sources" ! -name "ubuntu-ports.sources" -delete
           sudo tee /etc/apt/sources.list.d/ubuntu-ports.sources > /dev/null << 'SRC'
           Types: deb
           URIs: http://ports.ubuntu.com/ubuntu-ports
@@ -70,14 +73,16 @@ jobs:
 
       - name: Installa cross-compiler e librerie ARM64
         run: |
-          sudo apt-get install -y gcc-aarch64-linux-gnu libsdl2-dev:arm64 libcurl4-openssl-dev:arm64
+          sudo apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu libsdl2-dev:arm64 libcurl4-openssl-dev:arm64
 
       - name: Compila ARM64
         run: make cross-arm64
 
       - name: Installa cross-compiler e librerie ARM32 (armhf)
         run: |
-          sudo apt-get install -y gcc-arm-linux-gnueabihf libsdl2-dev:armhf libcurl4-openssl-dev:armhf
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-linux-gnueabihf libsdl2-dev:armhf libcurl4-openssl-dev:armhf
 
       - name: Compila ARM32
         run: make cross-armhf
