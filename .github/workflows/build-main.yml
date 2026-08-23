@@ -8,34 +8,31 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ── Linux x86 (64-bit + 32-bit) ────────────────────────────
+  # ── Linux x86 64-bit (nativo) ──────────────────────────────
   linux-x86:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Installa dipendenze x86 64-bit
+      - name: Installa dipendenze x86_64
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libsdl2-dev libcurl4-openssl-dev
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential pkg-config libsdl2-dev libcurl4-openssl-dev
 
-      - name: Compila 64-bit
+      - name: Compila x86_64
         run: make linux64
 
-      - name: Installa dipendenze x86 32-bit (multilib)
+      - name: Compila x86_32 in container nativo 32-bit
         run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          # Il problema reale è la dipendenza OR di GLib:
-          # libglib2.0-dev-bin | libglib2.0-dev-bin-linux.
-          # Su Ubuntu 24.04 l'alternativa "-bin" rompe il multiarch, mentre
-          # l'alternativa "-bin-linux" risolve il problema in modo affidabile.
-          sudo apt-get install -y --no-install-recommends \
-            libglib2.0-dev-bin-linux:i386 \
-            gcc-multilib libsdl2-dev:i386 libcurl4-openssl-dev:i386
-
-      - name: Compila 32-bit
-        run: make linux32
+          docker run --rm --platform linux/386 \
+            -v "$PWD:/src" -w /src \
+            i386/ubuntu:24.04 bash -lc '
+              apt-get update && \
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                build-essential pkg-config libsdl2-dev libcurl4-openssl-dev && \
+              make linux32
+            '
 
       - uses: actions/upload-artifact@v4
         with:
@@ -44,55 +41,36 @@ jobs:
             clock_linux64
             clock_linux32
 
-  # ── Linux ARM (64-bit + 32-bit, cross-compile da x86) ──────
+  # ── Linux ARM 64-bit + 32-bit (container nativi, non multiarch APT) ──────
   linux-arm:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Abilita architetture ARM (ports.ubuntu.com)
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Compila ARM64 in container nativo
         run: |
-          # Il file ubuntu.sources di sistema (security.ubuntu.com,
-          # archive.ubuntu.com) non ha pacchetti arm64/armhf: senza
-          # vincolarlo esplicitamente ad amd64, apt prova comunque a
-          # cercarli lì e fallisce con 404. Lo confino ad amd64.
-          sudo sed -i '/^Types:/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
-          sudo rm -f /etc/apt/sources.list.d/*.list
-          sudo find /etc/apt/sources.list.d/ -name "*.sources" \
-            ! -name "ubuntu.sources" ! -name "ubuntu-ports.sources" -delete
-          sudo tee /etc/apt/sources.list.d/ubuntu-ports.sources > /dev/null << 'SRC'
-          Types: deb
-          URIs: http://ports.ubuntu.com/ubuntu-ports
-          Suites: noble noble-updates noble-security
-          Components: main universe
-          Architectures: arm64 armhf
-          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-          SRC
-          sudo dpkg --add-architecture arm64
-          sudo dpkg --add-architecture armhf
-          sudo apt-get update
+          docker run --rm --platform linux/arm64 \
+            -v "$PWD:/src" -w /src \
+            arm64v8/ubuntu:24.04 bash -lc '
+              apt-get update && \
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                build-essential pkg-config libsdl2-dev libcurl4-openssl-dev && \
+              make linux-arm64
+            '
 
-      - name: Installa cross-compiler e librerie ARM64
+      - name: Compila ARM32 in container nativo
         run: |
-          # Usa l'alternativa corretta della dipendenza GLib per le architetture
-          # ARM: libglib2.0-dev-bin-linux:arm64. L'alternativa "-bin" genera
-          # il 'held broken packages' su Ubuntu 24.04. Questo permette di
-          # completare il cross-build senza toccare la matrice richiesta.
-          sudo apt-get install -y --no-install-recommends \
-            libglib2.0-dev-bin-linux:arm64 \
-            gcc-aarch64-linux-gnu libsdl2-dev:arm64 libcurl4-openssl-dev:arm64
-
-      - name: Compila ARM64
-        run: make cross-arm64
-
-      - name: Installa cross-compiler e librerie ARM32 (armhf)
-        run: |
-          sudo apt-get install -y --no-install-recommends \
-            libglib2.0-dev-bin-linux:armhf \
-            gcc-arm-linux-gnueabihf libsdl2-dev:armhf libcurl4-openssl-dev:armhf
-
-      - name: Compila ARM32
-        run: make cross-armhf
+          docker run --rm --platform linux/arm/v7 \
+            -v "$PWD:/src" -w /src \
+            arm32v7/ubuntu:24.04 bash -lc '
+              apt-get update && \
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                build-essential pkg-config libsdl2-dev libcurl4-openssl-dev && \
+              make linux-arm32
+            '
 
       - uses: actions/upload-artifact@v4
         with:
