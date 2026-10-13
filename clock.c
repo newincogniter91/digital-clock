@@ -53,6 +53,7 @@ static int  g_alarm_hour   = 7;
 static int  g_alarm_min    = 0;
 static BOOL g_alarm_firing = FALSE;   /* sta suonando?            */
 static int  g_alarm_ticks  = 0;       /* contatore beep           */
+static int  g_alarm_last_min = -1;    /* minuto (hh*60+mm) già suonato */
 
 /* ── Nomi giorni settimana ─────────────────────────────── */
 static const wchar_t *GIORNI[] = {
@@ -194,14 +195,64 @@ cleanup:
     return 0;
 }
 
+/* Stato del dialog sveglia */
+static HWND g_dlgEH = NULL, g_dlgEM = NULL, g_dlgChk = NULL;
+static BOOL g_dlgRunning = FALSE;
+
+/* WndProc del dialog: i WM_COMMAND dei bottoni arrivano qui (vengono
+ * inviati con SendMessage, quindi NON passano mai dal GetMessage loop) */
+static LRESULT CALLBACK AlarmDlgProc(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    switch (m) {
+    case WM_COMMAND:
+        if (LOWORD(w) == IDOK) {
+            wchar_t b[8];
+            GetWindowTextW(g_dlgEH,b,8); g_alarm_hour=_wtoi(b);
+            GetWindowTextW(g_dlgEM,b,8); g_alarm_min =_wtoi(b);
+            g_alarm_set=(SendMessage(g_dlgChk,BM_GETCHECK,0,0)==BST_CHECKED);
+            if (g_alarm_hour < 0)  g_alarm_hour = 0;
+            if (g_alarm_hour > 23) g_alarm_hour = 23;
+            if (g_alarm_min  < 0)  g_alarm_min  = 0;
+            if (g_alarm_min  > 59) g_alarm_min  = 59;
+            g_alarm_firing = FALSE;
+            g_alarm_ticks  = 0;
+            {   /* se imposto l'ora corrente, non suonare subito */
+                time_t t = time(NULL);
+                struct tm *tm = localtime(&t);
+                g_alarm_last_min = tm->tm_hour*60 + tm->tm_min;
+            }
+            g_dlgRunning = FALSE;
+            return 0;
+        }
+        if (LOWORD(w) == IDCANCEL) { g_dlgRunning = FALSE; return 0; }
+        break;
+    case WM_CLOSE:
+        g_dlgRunning = FALSE;
+        return 0;
+    }
+    return DefWindowProcW(h, m, w, l);
+}
+
 /* Crea il dialog sveglia a runtime (no .rc file) */
 static void ShowAlarmDialog(HWND parent)
 {
+    static BOOL classReg = FALSE;
+    HINSTANCE hInstDlg = (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE);
+    if (!classReg) {
+        WNDCLASSEXW dc = { sizeof(dc) };
+        dc.hInstance     = hInstDlg;
+        dc.lpfnWndProc   = AlarmDlgProc;
+        dc.lpszClassName = L"DigitalClockAlarmDlg";
+        dc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+        dc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+        RegisterClassExW(&dc);
+        classReg = TRUE;
+    }
 
     /* Dialog manuale con CreateWindowEx */
     HWND hDlg = CreateWindowExW(
         WS_EX_DLGMODALFRAME | WS_EX_TOPMOST,
-        L"#32770", L"Sveglia",
+        L"DigitalClockAlarmDlg", L"Sveglia",
         WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_CENTER,
         0,0, 260, 160, parent, NULL,
         (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE), NULL);
@@ -248,42 +299,38 @@ static void ShowAlarmDialog(HWND parent)
     wchar_t tmp[8];
     swprintf(tmp,8,L"%02d",g_alarm_hour); SetWindowTextW(hEH,tmp);
     swprintf(tmp,8,L"%02d",g_alarm_min);  SetWindowTextW(hEM,tmp);
-    if (g_alarm_set) SendMessage(hChk,BM_SETCHECK,BST_CHECKED,0);
+    SendMessage(hChk,BM_SETCHECK,BST_CHECKED,0);   /* di default la sveglia viene attivata */
+    g_dlgEH = hEH; g_dlgEM = hEM; g_dlgChk = hChk;
 
     ShowWindow(hDlg, SW_SHOW);
     UpdateWindow(hDlg);
 
     /* Mini message loop modale */
     MSG msg;
-    BOOL running = TRUE;
-    while (running && GetMessageW(&msg, NULL, 0, 0)) {
-        if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE) {
-            running = FALSE;
-        } else if (msg.message == WM_COMMAND) {
-            int id = LOWORD(msg.wParam);
-            if (id == IDOK) {
-                wchar_t b[8];
-                GetWindowTextW(hEH,b,8); g_alarm_hour=_wtoi(b);
-                GetWindowTextW(hEM,b,8); g_alarm_min =_wtoi(b);
-                g_alarm_set=(SendMessage(hChk,BM_GETCHECK,0,0)==BST_CHECKED);
-                if (g_alarm_hour < 0)  g_alarm_hour = 0;
-                if (g_alarm_hour > 23) g_alarm_hour = 23;
-                if (g_alarm_min  < 0)  g_alarm_min  = 0;
-                if (g_alarm_min  > 59) g_alarm_min  = 59;
-                g_alarm_firing = FALSE;
-                running = FALSE;
-            } else if (id == IDCANCEL) {
-                running = FALSE;
-            }
+    g_dlgRunning = TRUE;
+    EnableWindow(parent, FALSE);
+    SetFocus(hEH);
+    while (g_dlgRunning) {
+        BOOL r = GetMessageW(&msg, NULL, 0, 0);
+        if (r <= 0) {                       /* WM_QUIT: rilancialo al loop principale */
+            if (r == 0) PostQuitMessage((int)msg.wParam);
+            break;
         }
-        if (running) {
+        if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE) {
+            g_dlgRunning = FALSE;
+            break;
+        }
+        if (!IsDialogMessageW(hDlg, &msg)) {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
         if (!IsWindow(hDlg)) break;
     }
+    EnableWindow(parent, TRUE);
     DestroyWindow(hDlg);
     DeleteObject(hf);
+    SetForegroundWindow(parent);
+    SetFocus(parent);
 }
 
 /* ─────────────────────────────────────────────────────────
@@ -680,11 +727,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             if (g_alarm_set && !g_alarm_firing) {
                 time_t t = time(NULL);
                 struct tm *tm = localtime(&t);
+                int key = tm->tm_hour*60 + tm->tm_min;
                 if (tm->tm_hour == g_alarm_hour &&
                     tm->tm_min  == g_alarm_min  &&
-                    tm->tm_sec  == 0) {
-                    g_alarm_firing = TRUE;
-                    g_alarm_ticks  = 0;
+                    g_alarm_last_min != key) {
+                    g_alarm_firing   = TRUE;
+                    g_alarm_ticks    = 0;
+                    g_alarm_last_min = key;
                 }
             }
             if (g_alarm_firing) {
