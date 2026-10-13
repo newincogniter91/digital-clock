@@ -6,7 +6,9 @@
  */
 
 #include <SDL.h>
+#ifndef _WIN32
 #include <curl/curl.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +18,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <winhttp.h>
 #endif
 
 #define PI_VAL 3.14159265358979323846
@@ -112,6 +115,7 @@ typedef struct {
     int alarm_set, alarm_hour, alarm_min;
     int alarm_firing;
     Uint32 alarm_fire_start;
+    int alarm_last_min;          /* minuto (hh*60+mm) gia suonato */
 
     int show_help;
     int show_alarm_edit;
@@ -123,6 +127,7 @@ static SDL_mutex *g_weatherMutex = NULL;
 static SDL_AudioDeviceID g_audioDev = 0;
 static Uint8  *g_beepBuf = NULL;
 static Uint32  g_beepLen = 0;
+static SDL_atomic_t g_weatherBusy;   /* 1 = fetch meteo in corso */
 
 /* ─────────────────────────────────────────────────────────
  *  Disegno segmenti / cifre / testo
@@ -240,6 +245,8 @@ static void InitAudio(void)
     spec.channels = 1;
     spec.samples = 1024;
     g_audioDev = SDL_OpenAudioDevice(NULL, 0, &spec, NULL, 0);
+    if (!g_audioDev)
+        fprintf(stderr, "Audio non disponibile: %s\n", SDL_GetError());
 }
 
 static void GenerateBeep(void)
@@ -248,10 +255,11 @@ static void GenerateBeep(void)
     int samples = rate * ms / 1000;
     g_beepLen = (Uint32)(samples * sizeof(Sint16));
     g_beepBuf = (Uint8*)malloc(g_beepLen);
+    if (!g_beepBuf) { g_beepLen = 0; return; }
     Sint16 *p = (Sint16*)g_beepBuf;
     for (int i = 0; i < samples; i++) {
         double t = (double)i / rate;
-        p[i] = (Sint16)(3000.0 * sin(2.0 * PI_VAL * freq * t));
+        p[i] = (Sint16)(12000.0 * sin(2.0 * PI_VAL * freq * t));
     }
 }
 
@@ -266,6 +274,55 @@ static void PlayBeep(void)
 /* ─────────────────────────────────────────────────────────
  *  Meteo: fetch via libcurl in thread separato
  * ───────────────────────────────────────────────────────── */
+static void ParseWeather(const char *data)
+{
+    const char *p = strstr(data, "\"current_weather\"");
+    if (!p) return;
+    const char *q = strstr(p, "\"temperature\":");
+    const char *w = strstr(p, "\"weathercode\":");
+    SDL_LockMutex(g_weatherMutex);
+    if (q) app.temp  = (float)atof(q + strlen("\"temperature\":"));
+    if (w) app.wcode = atoi(w + strlen("\"weathercode\":"));
+    SDL_UnlockMutex(g_weatherMutex);
+}
+
+#ifdef _WIN32
+/* Windows: WinHTTP (nessuna DLL esterna, niente libcurl/OpenSSL) */
+static void FetchWeatherImpl(void)
+{
+    HINTERNET hSes = WinHttpOpen(L"DigitalClock/1.0",
+        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!hSes) return;
+    WinHttpSetTimeouts(hSes, 10000, 10000, 10000, 10000);
+
+    HINTERNET hCon = WinHttpConnect(hSes, L"api.open-meteo.com",
+        INTERNET_DEFAULT_HTTPS_PORT, 0);
+    if (!hCon) { WinHttpCloseHandle(hSes); return; }
+
+    HINTERNET hReq = WinHttpOpenRequest(hCon, L"GET",
+        L"/v1/forecast?latitude=" L"45.0703" L"&longitude=" L"7.6869"
+        L"&current_weather=true&timezone=auto",
+        NULL, WINHTTP_NO_REFERER,
+        WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
+    if (hReq &&
+        WinHttpSendRequest(hReq, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                           WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
+        WinHttpReceiveResponse(hReq, NULL)) {
+        char buf[4096];
+        DWORD rd = 0, tot = 0;
+        while (tot < sizeof(buf) - 1 &&
+               WinHttpReadData(hReq, buf + tot, (DWORD)(sizeof(buf) - 1 - tot), &rd) && rd > 0)
+            tot += rd;
+        buf[tot] = '\0';
+        ParseWeather(buf);
+    }
+    if (hReq) WinHttpCloseHandle(hReq);
+    WinHttpCloseHandle(hCon);
+    WinHttpCloseHandle(hSes);
+}
+#else
+/* Linux: libcurl */
 struct MemBuf { char *data; size_t len; };
 
 static size_t WriteCB(void *ptr, size_t size, size_t nmemb, void *ud)
@@ -281,13 +338,14 @@ static size_t WriteCB(void *ptr, size_t size, size_t nmemb, void *ud)
     return total;
 }
 
-static int FetchWeatherThread(void *arg)
+static void FetchWeatherImpl(void)
 {
-    (void)arg;
     CURL *curl = curl_easy_init();
-    if (!curl) return 0;
+    if (!curl) return;
 
-    struct MemBuf mb; mb.data = (char*)malloc(1); mb.data[0]='\0'; mb.len = 0;
+    struct MemBuf mb; mb.len = 0; mb.data = (char*)malloc(1);
+    if (!mb.data) { curl_easy_cleanup(curl); return; }
+    mb.data[0] = '\0';
 
     char url[256];
     snprintf(url, sizeof(url),
@@ -299,23 +357,32 @@ static int FetchWeatherThread(void *arg)
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &mb);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "DigitalClock/1.0");
 
-    CURLcode res = curl_easy_perform(curl);
-    if (res == CURLE_OK) {
-        char *p = strstr(mb.data, "\"current_weather\"");
-        if (p) {
-            char *q = strstr(p, "\"temperature\":");
-            char *w = strstr(p, "\"weathercode\":");
-            SDL_LockMutex(g_weatherMutex);
-            if (q) app.temp  = (float)atof(q + strlen("\"temperature\":"));
-            if (w) app.wcode = atoi(w + strlen("\"weathercode\":"));
-            SDL_UnlockMutex(g_weatherMutex);
-        }
-    }
+    if (curl_easy_perform(curl) == CURLE_OK)
+        ParseWeather(mb.data);
     free(mb.data);
     curl_easy_cleanup(curl);
+}
+#endif
+
+static int FetchWeatherThread(void *arg)
+{
+    (void)arg;
+    FetchWeatherImpl();
+    SDL_AtomicSet(&g_weatherBusy, 0);
     return 0;
+}
+
+/* Avvia il fetch in un thread, ma mai due insieme */
+static void StartWeatherFetch(void)
+{
+    if (SDL_AtomicGet(&g_weatherBusy)) return;
+    SDL_AtomicSet(&g_weatherBusy, 1);
+    SDL_Thread *t = SDL_CreateThread(FetchWeatherThread, "weather", NULL);
+    if (t) SDL_DetachThread(t);
+    else   SDL_AtomicSet(&g_weatherBusy, 0);
 }
 
 static const char* WeatherLabel(int code)
@@ -420,12 +487,13 @@ static void CheckAlarm(void)
     time_t t = time(NULL);
     struct tm *tmv = localtime(&t);
 
-    if (app.alarm_set && !app.alarm_firing &&
-        tmv->tm_hour == app.alarm_hour &&
-        tmv->tm_min  == app.alarm_min  &&
-        tmv->tm_sec  == 0) {
+    int key = tmv->tm_hour * 60 + tmv->tm_min;
+    if (tmv->tm_hour != app.alarm_hour || tmv->tm_min != app.alarm_min) {
+        app.alarm_last_min = -1;          /* fuori dal minuto della sveglia: riarma */
+    } else if (app.alarm_set && !app.alarm_firing && app.alarm_last_min != key) {
         app.alarm_firing = 1;
         app.alarm_fire_start = SDL_GetTicks();
+        app.alarm_last_min = key;         /* una sola volta per minuto, anche dopo ESC */
     }
 
     if (app.alarm_firing) {
@@ -545,6 +613,11 @@ static void HandleKey(SDL_Keycode key)
                 app.alarm_min  = app.edit_min;
                 app.alarm_set  = app.edit_enabled;
                 app.alarm_firing = 0;
+                {
+                    time_t tn = time(NULL);
+                    struct tm *tc = localtime(&tn);
+                    app.alarm_last_min = tc->tm_hour * 60 + tc->tm_min;
+                }
                 app.show_alarm_edit = 0;
                 break;
             case SDLK_ESCAPE:
@@ -585,11 +658,13 @@ int main(int argc, char *argv[])
 {
     (void)argc; (void)argv;
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
     }
+#ifndef _WIN32
     curl_global_init(CURL_GLOBAL_DEFAULT);
+#endif
     g_weatherMutex = SDL_CreateMutex();
 
     memset(&app, 0, sizeof(app));
@@ -598,6 +673,7 @@ int main(int argc, char *argv[])
     app.wcode = -1;
     app.running = 1;
     app.alarm_hour = 7;
+    app.alarm_last_min = -1;
 
     app.win = SDL_CreateWindow("Orologio Digitale",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -616,11 +692,15 @@ int main(int argc, char *argv[])
     SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED);
 #endif
 
-    InitAudio();
-    GenerateBeep();
+    /* L'audio e' opzionale: senza scheda audio l'orologio parte comunque */
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO) == 0) {
+        InitAudio();
+        GenerateBeep();
+    } else {
+        fprintf(stderr, "Audio non disponibile: %s\n", SDL_GetError());
+    }
 
-    SDL_Thread *wt0 = SDL_CreateThread(FetchWeatherThread, "weather", NULL);
-    if (wt0) SDL_DetachThread(wt0);
+    StartWeatherFetch();
 
     Uint32 lastWeather = SDL_GetTicks();
 
@@ -629,13 +709,15 @@ int main(int argc, char *argv[])
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) app.running = 0;
             else if (e.type == SDL_KEYDOWN) HandleKey(e.key.keysym.sym);
-            else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.clicks == 2) ToggleFullscreen();
+            else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT && e.button.clicks == 2) ToggleFullscreen();
         }
 
         Uint32 now = SDL_GetTicks();
-        if (now - lastWeather > 600000) {
-            SDL_Thread *wt = SDL_CreateThread(FetchWeatherThread, "weather", NULL);
-            if (wt) SDL_DetachThread(wt);
+        SDL_LockMutex(g_weatherMutex);
+        int haveWeather = (app.temp > -900.f);
+        SDL_UnlockMutex(g_weatherMutex);
+        if (now - lastWeather > (haveWeather ? 600000u : 30000u)) {
+            StartWeatherFetch();   /* senza dati riprova ogni 30 s (rete non ancora pronta) */
             lastWeather = now;
         }
 
@@ -647,12 +729,18 @@ int main(int argc, char *argv[])
 #ifdef _WIN32
     SetThreadExecutionState(ES_CONTINUOUS);
 #endif
+    /* thread meteo ancora in corso: aspetta un attimo, poi lascia chiudere il processo */
+    for (int i = 0; i < 40 && SDL_AtomicGet(&g_weatherBusy); i++) SDL_Delay(25);
+    if (SDL_AtomicGet(&g_weatherBusy)) return 0;
+
     if (g_audioDev) SDL_CloseAudioDevice(g_audioDev);
     free(g_beepBuf);
     SDL_DestroyMutex(g_weatherMutex);
     SDL_DestroyRenderer(app.ren);
     SDL_DestroyWindow(app.win);
     SDL_Quit();
+#ifndef _WIN32
     curl_global_cleanup();
+#endif
     return 0;
 }

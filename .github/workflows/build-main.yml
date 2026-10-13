@@ -128,7 +128,6 @@ jobs:
             make
             ${{ matrix.prefix }}-gcc
             ${{ matrix.prefix }}-SDL2
-            ${{ matrix.prefix }}-curl
 
       - name: Compila ${{ matrix.output }}
         run: make ${{ matrix.target }}

@@ -92,12 +92,15 @@ cross-x86_64:
 
 # ── Windows — da eseguire DENTRO una shell MSYS2 ───────────
 # (MinGW64 shell per windows64, MinGW32 shell per windows32)
-# Richiede: pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-SDL2 mingw-w64-x86_64-curl
+# Richiede: pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-SDL2 make
+# Link statico di SDL2 + meteo via WinHTTP: l'exe non richiede nessuna DLL esterna.
+SDL2_STATIC_LIBS := $(shell $(PKG_CONFIG) --static --libs sdl2 2>/dev/null)
+
 windows64:
-	gcc -O2 -mwindows -o clock64.exe $(SRC) $(SDL2_CFLAGS) $(SDL2_LIBS) -lcurl -lws2_32 -lm
+	gcc -O2 -mwindows -o clock64.exe $(SRC) $(SDL2_CFLAGS) -static $(SDL2_STATIC_LIBS) -lwinhttp -lm
 
 windows32:
-	gcc -O2 -mwindows -o clock32.exe $(SRC) $(SDL2_CFLAGS) $(SDL2_LIBS) -lcurl -lws2_32 -lm
+	gcc -O2 -mwindows -o clock32.exe $(SRC) $(SDL2_CFLAGS) -static $(SDL2_STATIC_LIBS) -lwinhttp -lm
 
 all: linux64
 

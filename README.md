@@ -68,7 +68,7 @@ make linux32     # 32-bit (richiede pacchetti multilib, vedi setup.sh)
 2. Apri **"MSYS2 MinGW 64-bit"** dal menu Start
 3. Installa le dipendenze (una volta sola):
    ```bash
-   pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-SDL2 mingw-w64-x86_64-curl make
+   pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-SDL2 make
    ```
 4. Compila:
    ```bash
