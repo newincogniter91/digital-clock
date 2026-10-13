@@ -100,39 +100,38 @@ jobs:
             clock_linux_arm64
             clock_linux_arm32
 
-  # ── Windows (64-bit + 32-bit, via MSYS2) ───────────────────
+  # ── Windows (64-bit + 32-bit, cross-compile con MinGW + SDL2 ufficiale) ──
   windows:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - msystem: MINGW64
-            prefix: mingw-w64-x86_64
+          - triple: x86_64-w64-mingw32
+            pkg: gcc-mingw-w64-x86-64
             output: clock64.exe
-            target: windows64
-          - msystem: MINGW32
-            prefix: mingw-w64-i686
+          - triple: i686-w64-mingw32
+            pkg: gcc-mingw-w64-i686
             output: clock32.exe
-            target: windows32
-    defaults:
-      run:
-        shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: ${{ matrix.msystem }}
-          update: true
-          install: >-
-            make
-            ${{ matrix.prefix }}-gcc
-            ${{ matrix.prefix }}-SDL2
+      - name: Installa MinGW e SDL2 (dev ufficiale)
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ${{ matrix.pkg }}
+          curl -sSL -o sdl2.tgz https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-devel-2.30.9-mingw.tar.gz
+          tar xzf sdl2.tgz
 
-      - name: Compila ${{ matrix.output }}
-        run: make ${{ matrix.target }}
+      - name: Compila ${{ matrix.output }} (SDL2 statico + WinHTTP, nessuna DLL)
+        run: |
+          S="$PWD/SDL2-2.30.9/${{ matrix.triple }}"
+          ${{ matrix.triple }}-gcc -O2 -mwindows -I"$S/include/SDL2" -Dmain=SDL_main \
+            -o ${{ matrix.output }} clock.c -L"$S/lib" -static \
+            -lmingw32 -lSDL2main -lSDL2 -lm -ldinput8 -ldxguid -ldxerr8 -luser32 -lgdi32 \
+            -lwinmm -limm32 -lole32 -loleaut32 -lshell32 -lsetupapi -lversion -luuid -lwinhttp
 
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-${{ matrix.msystem }}
+          name: windows-${{ matrix.triple }}
           path: ${{ matrix.output }}
