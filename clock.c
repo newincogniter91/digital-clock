@@ -724,16 +724,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_TIMER:
         if (wp == 1) {
             /* Controlla sveglia */
-            if (g_alarm_set && !g_alarm_firing) {
+            {
                 time_t t = time(NULL);
                 struct tm *tm = localtime(&t);
                 int key = tm->tm_hour*60 + tm->tm_min;
-                if (tm->tm_hour == g_alarm_hour &&
-                    tm->tm_min  == g_alarm_min  &&
-                    g_alarm_last_min != key) {
+                if (tm->tm_hour != g_alarm_hour || tm->tm_min != g_alarm_min) {
+                    g_alarm_last_min = -1;       /* fuori dal minuto della sveglia: riarma */
+                } else if (g_alarm_set && !g_alarm_firing && g_alarm_last_min != key) {
                     g_alarm_firing   = TRUE;
                     g_alarm_ticks    = 0;
-                    g_alarm_last_min = key;
+                    g_alarm_last_min = key;      /* una volta sola per minuto */
                 }
             }
             if (g_alarm_firing) {
