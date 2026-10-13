@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Se valorizzato (es. V4.2) pubblica anche la release con tutti gli eseguibili"
+        required: false
+        default: ""
 
 jobs:
   # ── Linux x86 64-bit (nativo) ──────────────────────────────
@@ -135,3 +140,44 @@ jobs:
         with:
           name: windows-${{ matrix.triple }}
           path: ${{ matrix.output }}
+
+  # ── Release (solo da avvio manuale con release_tag) ────────
+  release:
+    needs: [linux-x86, linux-arm, windows]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          ref: win32-native
+          path: native
+
+      - name: Compila le versioni Win32 native (clock32nat / clock64nat)
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y gcc-mingw-w64-x86-64 gcc-mingw-w64-i686
+          mkdir -p dist
+          x86_64-w64-mingw32-gcc -O2 -mwindows -municode native/clock.c -o dist/clock64nat.exe -lwinhttp -lws2_32
+          i686-w64-mingw32-gcc   -O2 -mwindows -municode native/clock.c -o dist/clock32nat.exe -lwinhttp -lws2_32
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Pubblica release ${{ inputs.release_tag }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          cd dist
+          chmod +x clock_linux* 2>/dev/null || true
+          ls -la
+          zip All_exec.zip clock*
+          gh release create "$TAG" clock* All_exec.zip \
+            --repo "$GITHUB_REPOSITORY" --target main --title "$TAG" \
+            --notes "Sveglia Win32 nativa sistemata (i bottoni del dialog ora impostano davvero la sveglia, si riarma ogni giorno). SDL2: audio opzionale, sveglia affidabile, thread meteo sicuro, meteo con retry; su Windows exe statici senza DLL (WinHTTP). Include gli eseguibili SDL2 (clock32/64.exe, Linux x86/ARM) e Win32 nativi (clock32nat/clock64nat.exe)."
