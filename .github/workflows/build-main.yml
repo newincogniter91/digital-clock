@@ -178,6 +178,10 @@ jobs:
           chmod +x clock_linux* 2>/dev/null || true
           ls -la
           zip All_exec.zip clock*
-          gh release create "$TAG" clock* All_exec.zip \
-            --repo "$GITHUB_REPOSITORY" --target main --title "$TAG" \
-            --notes "Sveglia Win32 nativa sistemata (i bottoni del dialog ora impostano davvero la sveglia, si riarma ogni giorno). SDL2: audio opzionale, sveglia affidabile, thread meteo sicuro, meteo con retry; su Windows exe statici senza DLL (WinHTTP). Include gli eseguibili SDL2 (clock32/64.exe, Linux x86/ARM) e Win32 nativi (clock32nat/clock64nat.exe)."
+          NOTES="V4.2 - Win32 nativo: la sveglia ora si imposta davvero (bottoni del dialog funzionanti, bottoni visibili, Tab funzionante, si riarma ogni giorno). SDL2: overlay sveglia gia su ATTIVA, testo leggibile (non piu sovrapposto), audio opzionale, thread meteo sicuro, meteo con retry; su Windows exe statici senza DLL (WinHTTP). Include gli eseguibili SDL2 (clock32/64.exe, Linux x86/ARM) e Win32 nativi (clock32nat/clock64nat.exe)."
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" clock* All_exec.zip --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" --notes "$NOTES" --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" clock* All_exec.zip --repo "$GITHUB_REPOSITORY" --target main --title "$TAG" --notes "$NOTES"
+          fi

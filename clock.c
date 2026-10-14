@@ -552,7 +552,8 @@ static void RenderClock(void)
     if (!app.format24)
         DrawBitmapText(app.ren, isPM ? "PM" : "AM", sx, sy - (int)(H*0.035), 2, COL_TEXT);
 
-    int fs = (int)(H * 0.022); if (fs < 2) fs = 2;
+    /* il font bitmap e' 5x7: 'fs' e' la scala per punto, quindi il testo e' alto 7*fs pixel (~3% di H) */
+    int fs = (int)lround(H * 0.03 / 7.0); if (fs < 2) fs = 2;
 
     char dateBuf[20];
     snprintf(dateBuf, 20, "%02d/%02d/%02d", tmv->tm_mday, tmv->tm_mon+1, tmv->tm_year % 100);
@@ -639,7 +640,7 @@ static void HandleKey(SDL_Keycode key)
         case SDLK_a:
             app.edit_hour = app.alarm_hour;
             app.edit_min  = app.alarm_min;
-            app.edit_enabled = app.alarm_set;
+            app.edit_enabled = 1;   /* si apre su "attiva": con Invio la sveglia viene davvero impostata */
             app.edit_field = 0;
             app.show_alarm_edit = 1;
             break;
