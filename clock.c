@@ -249,12 +249,17 @@ static void ShowAlarmDialog(HWND parent)
         classReg = TRUE;
     }
 
+    /* Dimensione dell'area client 230x150: la finestra esterna include titolo e bordi */
+    RECT rc = { 0, 0, 230, 150 };
+    AdjustWindowRectEx(&rc, WS_POPUP | WS_CAPTION | WS_SYSMENU, FALSE,
+                       WS_EX_DLGMODALFRAME | WS_EX_TOPMOST);
+
     /* Dialog manuale con CreateWindowEx */
     HWND hDlg = CreateWindowExW(
         WS_EX_DLGMODALFRAME | WS_EX_TOPMOST,
         L"DigitalClockAlarmDlg", L"Sveglia",
         WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_CENTER,
-        0,0, 260, 160, parent, NULL,
+        0,0, rc.right - rc.left, rc.bottom - rc.top, parent, NULL,
         (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE), NULL);
     if (!hDlg) return;
 
@@ -273,20 +278,20 @@ static void ShowAlarmDialog(HWND parent)
 
     HWND hLbl = CreateWindowW(L"STATIC", L"Ora (HH):", WS_CHILD|WS_VISIBLE,
         20,20,80,20, hDlg,(HMENU)101,NULL,NULL);
-    HWND hEH  = CreateWindowW(L"EDIT",   L"", WS_CHILD|WS_VISIBLE|WS_BORDER|ES_CENTER,
+    HWND hEH  = CreateWindowW(L"EDIT",   L"", WS_CHILD|WS_VISIBLE|WS_BORDER|WS_TABSTOP|ES_CENTER,
         100,18,50,22, hDlg,(HMENU)102,NULL,NULL);
     HWND hLm  = CreateWindowW(L"STATIC", L"Min (MM):", WS_CHILD|WS_VISIBLE,
         20,50,80,20, hDlg,(HMENU)103,NULL,NULL);
-    HWND hEM  = CreateWindowW(L"EDIT",   L"", WS_CHILD|WS_VISIBLE|WS_BORDER|ES_CENTER,
+    HWND hEM  = CreateWindowW(L"EDIT",   L"", WS_CHILD|WS_VISIBLE|WS_BORDER|WS_TABSTOP|ES_CENTER,
         100,48,50,22, hDlg,(HMENU)104,NULL,NULL);
     HWND hChk = CreateWindowW(L"BUTTON", L"Sveglia attiva",
-        WS_CHILD|WS_VISIBLE|BS_AUTOCHECKBOX,
+        WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_AUTOCHECKBOX,
         20,80,160,22, hDlg,(HMENU)105,NULL,NULL);
     HWND hOK  = CreateWindowW(L"BUTTON", L"OK",
-        WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON,
+        WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_DEFPUSHBUTTON,
         50,110,70,26, hDlg,(HMENU)IDOK,NULL,NULL);
     HWND hCan = CreateWindowW(L"BUTTON", L"Annulla",
-        WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,
+        WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_PUSHBUTTON,
         130,110,70,26, hDlg,(HMENU)IDCANCEL,NULL,NULL);
 
     /* Applica font a tutti */
