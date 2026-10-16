@@ -521,12 +521,22 @@ static void RenderClock(void)
     int isPM = 0;
     if (!app.format24) { isPM = (hh >= 12); hh %= 12; if (hh == 0) hh = 12; }
 
+    /* HH:MM + secondi affiancati (mai sovrapposti): se non entrano in larghezza,
+     * si rimpiccioliscono tutte le cifre finche' l'insieme sta nella finestra */
     int digitH = (int)(H * 0.55);
-    int digitW = (int)(digitH * 0.6);
-    int T = digitH / 12; if (T < 4) T = 4;
-    int gap = digitW / 5;
-    int colonW = T * 3;
-    int totalW = 4*digitW + colonW + 5*gap;
+    int digitW, T, gap, colonW, sH, sW, sT, totalW;
+    for (;;) {
+        digitW = (int)(digitH * 0.6);
+        T      = digitH / 12; if (T < 4) T = 4;
+        gap    = digitW / 5;
+        colonW = T * 3;
+        sH     = (int)(digitH * 0.30);
+        sW     = (int)(sH * 0.6);
+        sT     = sH / 12; if (sT < 2) sT = 2;
+        totalW = 4*digitW + colonW + 5*gap + 2*gap + 2*sW + sT;
+        if (totalW <= (int)(W * 0.94) || digitH <= 20) break;
+        digitH = digitH * 95 / 100;
+    }
     int startX = (W - totalW) / 2;
     int startY = (H - digitH) / 2 + (int)(H * 0.04);
 
@@ -540,11 +550,8 @@ static void RenderClock(void)
     DrawDigit(app.ren, mm/10, mx,           startY, digitW, digitH, T);
     DrawDigit(app.ren, mm%10, mx+digitW+gap,startY, digitW, digitH, T);
 
-    /* secondi piccoli, ancorati in basso a destra dell'ultima cifra minuti */
-    int sH = (int)(digitH * 0.28);
-    int sW = (int)(sH * 0.6);
-    int sT = sH/12; if (sT < 2) sT = 2;
-    int sx = mx + digitW + gap + digitW - 2*sW - sT;
+    /* secondi piccoli, a destra dei minuti e allineati in basso (non sopra le cifre) */
+    int sx = mx + digitW + gap + digitW + 2*gap;
     int sy = startY + digitH - sH;
     DrawDigit(app.ren, ss/10, sx,        sy, sW, sH, sT);
     DrawDigit(app.ren, ss%10, sx+sW+sT,  sy, sW, sH, sT);
